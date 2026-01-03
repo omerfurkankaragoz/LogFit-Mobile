@@ -1,16 +1,18 @@
-// src/components/Profile.tsx
 import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, TextInput, TouchableOpacity, Image, ScrollView, Modal, Alert, Dimensions } from 'react-native';
 import { supabase } from '../services/supabaseClient';
 import { Session } from '@supabase/supabase-js';
-import { Settings, LogOut, Plus, X, ArrowLeft } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Settings, LogOut, Plus, X, ArrowLeft } from 'lucide-react-native';
 import { format, parseISO, startOfDay, endOfDay } from 'date-fns';
 import { tr } from 'date-fns/locale';
+import { Svg, Line, Circle, Text as SvgText } from 'react-native-svg';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
 
 interface ProfileProps {
   session: Session;
   onLogout: () => void;
-  onBack?: () => void; // Yeni prop: Geri dönme işlevi için
+  onBack?: () => void;
 }
 
 interface Measurement {
@@ -33,6 +35,67 @@ const getBMICategory = (bmi: number | null) => {
   if (bmi < 25) return { category: 'Normal', color: 'bg-system-green', textColor: 'text-white' };
   if (bmi < 30) return { category: 'Fazla Kilolu', color: 'bg-system-yellow', textColor: 'text-black' };
   return { category: 'Obez', color: 'bg-system-red', textColor: 'text-white' };
+};
+
+const SimpleLineChart = ({ data }: { data: any[] }) => {
+  if (data.length === 0) return null;
+  const CHART_WIDTH = SCREEN_WIDTH - 64;
+  const CHART_HEIGHT = 200;
+
+  const values = data.map(d => d.weight);
+  const maxVal = Math.max(...values) + 2;
+  const minVal = Math.min(...values) - 2;
+  const range = maxVal - minVal;
+
+  // Normalize points
+  const points = data.map((d, i) => {
+    const x = (i / (data.length - 1 || 1)) * CHART_WIDTH;
+    const y = CHART_HEIGHT - (((d.weight - minVal) / range) * CHART_HEIGHT);
+    return { x, y, value: d.weight, label: d.date };
+  });
+
+  return (
+    <View>
+      <Svg width={CHART_WIDTH} height={CHART_HEIGHT + 20}>
+
+        {/* Line */}
+        {points.map((p, i) => {
+          if (i === 0) return null;
+          const prev = points[i - 1];
+          return (
+            <Line
+              key={i}
+              x1={prev.x}
+              y1={prev.y}
+              x2={p.x}
+              y2={p.y}
+              stroke="#0A84FF"
+              strokeWidth="2"
+            />
+          );
+        })}
+
+        {/* Dots */}
+        {points.map((p, i) => (
+          <Circle key={`dot-${i}`} cx={p.x} cy={p.y} r="3" fill="#0A84FF" />
+        ))}
+
+        {/* X Axis Labels (Simplified) */}
+        {points.filter((_, i) => i % Math.ceil(points.length / 5) === 0).map((p, i) => (
+          <SvgText
+            key={`label-${i}`}
+            x={p.x}
+            y={CHART_HEIGHT + 15}
+            fontSize="10"
+            fill="gray"
+            textAnchor="middle"
+          >
+            {p.label}
+          </SvgText>
+        ))}
+      </Svg>
+    </View>
+  );
 };
 
 const Profile: React.FC<ProfileProps> = ({ session, onLogout, onBack }) => {
@@ -111,7 +174,7 @@ const Profile: React.FC<ProfileProps> = ({ session, onLogout, onBack }) => {
       if (measurementsData) setMeasurements(measurementsData);
     } catch (error: any) {
       console.error("Profil verisi çekilirken hata:", error);
-      alert(error.message);
+      Alert.alert('Hata', error.message);
     } finally {
       if (showLoader) setLoading(false);
     }
@@ -130,7 +193,7 @@ const Profile: React.FC<ProfileProps> = ({ session, onLogout, onBack }) => {
       if (error) throw error;
       setEditMode(false);
     } catch (error: any) {
-      alert(error.message);
+      Alert.alert('Hata', error.message);
     } finally {
       setLoading(false);
     }
@@ -138,7 +201,7 @@ const Profile: React.FC<ProfileProps> = ({ session, onLogout, onBack }) => {
 
   const handleAddMeasurement = async () => {
     if (newWeight === '' || newHeight === '') {
-      alert('Lütfen boy ve kilo değerlerini girin.');
+      Alert.alert('Hata', 'Lütfen boy ve kilo değerlerini girin.');
       return;
     }
     try {
@@ -166,148 +229,194 @@ const Profile: React.FC<ProfileProps> = ({ session, onLogout, onBack }) => {
       setModalOpen(false);
     } catch (error: any) {
       console.error("Ölçüm eklenirken hata:", error);
-      alert(error.message);
+      Alert.alert('Hata', error.message);
     } finally {
       setLoading(false);
     }
   };
 
   const renderInfoRow = (label: string, value: string | number | null) => (
-    <div className="flex justify-between items-center h-11">
-      <span className="text-system-label-secondary">{label}</span>
-      <span className="text-system-label font-medium">{value || '-'}</span>
-    </div>
+    <View className="flex-row justify-between items-center h-11">
+      <Text className="text-system-label-secondary text-base">{label}</Text>
+      <Text className="text-system-label font-medium text-base">{value || '-'}</Text>
+    </View>
   );
 
   const renderEditRow = (label: string, value: string | number, onChange: (val: any) => void, type: string = 'text', placeholder: string = '') => {
     const handleClear = () => { onChange(type === 'number' ? '' : ''); };
     return (
-      <div className="flex justify-between items-center h-11">
-        <span className="text-system-label-secondary">{label}</span>
-        <div className="relative w-1/2">
-          <input
-            type={type}
-            value={value}
-            onChange={(e) => onChange(type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)}
+      <View className="flex-row justify-between items-center h-14">
+        <Text className="text-system-label-secondary text-base">{label}</Text>
+        <View className="flex-1 ml-4 relative">
+          <TextInput
+            value={String(value)}
+            onChangeText={(text) => onChange(type === 'number' ? (text === '' ? '' : Number(text)) : text)}
             placeholder={placeholder}
-            className="w-full bg-system-background-tertiary text-system-label font-medium rounded-md px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-system-blue text-left"
+            placeholderTextColor="gray"
+            keyboardType={type === 'number' ? 'numeric' : 'default'}
+            className="w-full bg-system-background-tertiary text-system-label font-medium rounded-lg px-3 py-2 text-right"
           />
           {String(value).length > 0 && (
-            <button
-              onClick={handleClear}
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-5 h-5 bg-system-label-tertiary rounded-full text-system-background active:scale-90 transition-transform"
-              aria-label="Clear input"
-            >
-              <X size={14} />
-            </button>
+            <TouchableOpacity onPress={handleClear} className="absolute left-2 top-3">
+              <X size={16} color="gray" />
+            </TouchableOpacity>
           )}
-        </div>
-      </div>
+        </View>
+      </View>
     );
   };
 
   return (
-    <div>
-      {/* Sticky Header - GÜNCELLENDİ: Geri Butonu ve Tasarım */}
-      <div className="sticky top-[env(safe-area-inset-top)] z-10 bg-system-background/80 backdrop-blur-md pt-4 pb-4 px-4 flex justify-between items-center transition-colors duration-200">
-        <div className="flex items-center gap-2">
+    <View className="flex-1 bg-system-background">
+      {/* Header */}
+      <View className="px-4 py-4 bg-system-background/80 flex-row justify-between items-center border-b border-system-separator/30">
+        <View className="flex-row items-center gap-2">
           {onBack && (
-            <button onClick={onBack} className="p-1 -ml-2 text-system-blue hover:opacity-80 transition-opacity">
-              <ArrowLeft size={24} />
-            </button>
+            <TouchableOpacity onPress={onBack} className="p-1 -ml-2">
+              <ArrowLeft size={24} color="#0A84FF" />
+            </TouchableOpacity>
           )}
-          <h1 className="text-3xl font-bold text-system-label">Profil</h1>
-        </div>
+          <Text className="text-3xl font-bold text-system-label">Profil</Text>
+        </View>
         {editMode ? (
-          <button onClick={handleUpdateProfile} className="text-system-blue text-lg font-bold">Kaydet</button>
+          <TouchableOpacity onPress={handleUpdateProfile}>
+            <Text className="text-system-blue text-lg font-bold">Kaydet</Text>
+          </TouchableOpacity>
         ) : (
-          <button onClick={() => setEditMode(true)} className="p-2 text-system-blue"> <Settings size={24} /> </button>
+          <TouchableOpacity onPress={() => setEditMode(true)} className="p-2">
+            <Settings size={24} color="#0A84FF" />
+          </TouchableOpacity>
         )}
-      </div>
+      </View>
 
-      <div className="p-4 space-y-6">
-        <div className="flex flex-col items-center space-y-3">
-          <img src={avatarUrl || `https://ui-avatars.com/api/?name=${fullName || 'U'}&background=2C2C2E&color=fff`} alt="Avatar" className="w-24 h-24 rounded-full shadow-lg" />
-        </div>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+        <View className="items-center mb-6">
+          <Image
+            source={{ uri: avatarUrl || `https://ui-avatars.com/api/?name=${fullName || 'U'}&background=2C2C2E&color=fff` }}
+            className="w-24 h-24 rounded-full shadow-lg"
+          />
+        </View>
 
-        <div className="bg-system-background-secondary rounded-xl divide-y divide-system-separator">
-          <div className="p-4">
-            {editMode ? renderEditRow('Ad Soyad', fullName || '', setFullName, 'text', 'Ad Soyad') : renderInfoRow('Ad Soyad', fullName)}
-          </div>
-          <div className="p-4">
-            {editMode ? renderEditRow('Yaş', age, setAge, 'number', 'Yaş') : renderInfoRow('Yaş', age)}
-          </div>
-        </div>
+        <View className="bg-system-background-secondary rounded-xl overflow-hidden mb-6 p-4">
+          {editMode ? renderEditRow('Ad Soyad', fullName || '', setFullName, 'text', 'Ad Soyad') : renderInfoRow('Ad Soyad', fullName)}
+          <View className="h-[1px] bg-system-separator/10 my-2" />
+          {editMode ? renderEditRow('Yaş', age, setAge, 'number', 'Yaş') : renderInfoRow('Yaş', age)}
+        </View>
 
-        <div className="bg-system-background-secondary rounded-xl">
-          <div className="p-4 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-system-label">Vücut Ölçüleri</h2>
-            <button onClick={() => setModalOpen(true)} className="text-system-blue text-lg flex items-center gap-1"> <Plus size={20} /> Ekle </button>
-          </div>
+        <View className="bg-system-background-secondary rounded-xl p-4 mb-6">
+          <View className="flex-row justify-between items-center mb-4">
+            <Text className="text-xl font-bold text-system-label">Vücut Ölçüleri</Text>
+            <TouchableOpacity onPress={() => setModalOpen(true)} className="flex-row items-center gap-1">
+              <Plus size={20} color="#0A84FF" />
+              <Text className="text-system-blue text-lg">Ekle</Text>
+            </TouchableOpacity>
+          </View>
+
           {height && weight ? (
-            <div className='p-4 space-y-4'>
-              <div className="grid grid-cols-2 gap-4 text-center">
-                <div> <p className="text-4xl font-bold text-system-label">{weight || '-'}</p> <p className="text-system-label-secondary text-sm">Kilo (kg)</p> </div>
-                <div> <p className="text-4xl font-bold text-system-label">{height || '-'}</p> <p className="text-system-label-secondary text-sm">Boy (cm)</p> </div>
-              </div>
-              <div className="text-center pt-4">
-                <span className={`px-3 py-1 text-sm font-bold rounded-full ${bmiInfo.color} ${bmiInfo.textColor}`}>{bmiInfo.category}</span>
-                <p className="text-6xl font-bold text-system-label mt-2">{bmi ? bmi.toFixed(1) : '-'}</p>
-                <p className="text-system-label-secondary text-sm">Vücut Kitle Endeksi</p>
-              </div>
-              <div className="relative w-full flex rounded-full h-2.5 bg-system-background-tertiary overflow-hidden">
-                <div className="w-1/4 bg-system-blue"></div>
-                <div className="w-1/4 bg-system-green"></div>
-                <div className="w-1/4 bg-system-yellow"></div>
-                <div className="w-1/4 bg-system-red"></div>
-                {bmi && (
-                  <div className="absolute h-full flex items-center" style={{ left: `calc(${bmiPercent}% - 4px)` }}>
-                    <div className="w-2 h-4 bg-white rounded-full shadow-lg border-2 border-system-background-secondary"></div>
-                  </div>
-                )}
-              </div>
-              {chartData.length > 0 && (
-                <div className="h-64 w-full pt-4 pb-4">
-                  <h3 className="text-md font-semibold text-system-label-secondary mb-3 text-center">Kilo Değişimi (kg)</h3>
-                  <ResponsiveContainer>
-                    <LineChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgb(84 84 88 / 0.6)" />
-                      <XAxis dataKey="date" tick={{ fontSize: 12, fill: 'rgb(235 235 245 / 0.6)' }} />
-                      <YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={{ fontSize: 12, fill: 'rgb(235 235 245 / 0.6)' }} />
-                      <Tooltip contentStyle={{ backgroundColor: 'rgba(44, 44, 46, 0.8)', borderColor: 'rgb(84 84 88 / 0.6)', borderRadius: '12px' }} />
-                      <Line type="monotone" dataKey="weight" stroke="#0A84FF" strokeWidth={2.5} dot={{ fill: '#0A84FF', r: 4 }} activeDot={{ r: 6 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </div>
-          ) : (<p className="text-center text-system-label-secondary py-8 px-4">Başlamak için ilk ölçümünüzü ekleyin.</p>)}
-        </div>
-        <div className="bg-system-background-secondary rounded-xl">
-          <button onClick={onLogout} className="w-full p-4 text-system-red text-center text-lg flex items-center justify-center gap-2"> <LogOut size={20} /> <span>Çıkış Yap</span> </button>
-        </div>
+            <View className='space-y-4'>
+              <View className="flex-row justify-between text-center">
+                <View className="flex-1 items-center">
+                  <Text className="text-4xl font-bold text-system-label">{weight || '-'}</Text>
+                  <Text className="text-system-label-secondary text-sm">Kilo (kg)</Text>
+                </View>
+                <View className="flex-1 items-center">
+                  <Text className="text-4xl font-bold text-system-label">{height || '-'}</Text>
+                  <Text className="text-system-label-secondary text-sm">Boy (cm)</Text>
+                </View>
+              </View>
 
-        {isModalOpen && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="relative w-full max-w-sm bg-system-background-secondary rounded-2xl p-6 m-4 space-y-4 shadow-lg">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold text-system-label">Yeni Ölçüm Ekle</h2>
-                <button onClick={() => setModalOpen(false)} className="p-1"> <X size={24} className="text-system-label-secondary" /> </button>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-system-label-secondary">Kilo (kg)</label>
-                <input type="number" value={newWeight} onChange={(e) => setNewWeight(e.target.value === '' ? '' : Number(e.target.value))} placeholder="Örn: 75.5" className="mt-1 w-full p-3 bg-system-background-tertiary text-system-label rounded-lg focus:outline-none focus:ring-2 focus:ring-system-blue" />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-system-label-secondary">Boy (cm)</label>
-                <input type="number" value={newHeight} onChange={(e) => setNewHeight(e.target.value === '' ? '' : Number(e.target.value))} placeholder="Örn: 180" className="mt-1 w-full p-3 bg-system-background-tertiary text-system-label rounded-lg focus:outline-none focus:ring-2 focus:ring-system-blue" />
-              </div>
-              <button onClick={handleAddMeasurement} disabled={loading} className="w-full py-3 bg-system-blue text-white rounded-xl font-semibold text-lg disabled:opacity-50"> {loading ? 'Kaydediliyor...' : 'Kaydet'} </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+              <View className="items-center pt-4">
+                <View className={`px-3 py-1 rounded-full ${bmiInfo.color}`}>
+                  <Text className={`text-sm font-bold ${bmiInfo.textColor}`}>{bmiInfo.category}</Text>
+                </View>
+                <Text className="text-6xl font-bold text-system-label mt-2">{bmi ? bmi.toFixed(1) : '-'}</Text>
+                <Text className="text-system-label-secondary text-sm">Vücut Kitle Endeksi</Text>
+              </View>
+
+              <View className="w-full h-2.5 flex-row rounded-full bg-system-background-tertiary overflow-hidden mt-4 relative">
+                <View className="flex-1 bg-system-blue" />
+                <View className="flex-1 bg-system-green" />
+                <View className="flex-1 bg-system-yellow" />
+                <View className="flex-1 bg-system-red" />
+                {bmi && (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      left: `${bmiPercent}%`,
+                      marginLeft: -4,
+                      height: '100%',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <View className="w-2 h-4 bg-white rounded-full shadow-lg border-2 border-system-background-secondary" />
+                  </View>
+                )}
+              </View>
+
+              {chartData.length > 0 && (
+                <View className="pt-4 pb-4">
+                  <Text className="text-md font-semibold text-system-label-secondary mb-3 text-center">Kilo Değişimi (kg)</Text>
+                  <SimpleLineChart data={chartData} />
+                </View>
+              )}
+            </View>
+          ) : (
+            <Text className="text-center text-system-label-secondary py-8 px-4">Başlamak için ilk ölçümünüzü ekleyin.</Text>
+          )}
+        </View>
+
+        <TouchableOpacity onPress={onLogout} className="bg-system-background-secondary rounded-xl h-14 flex-row items-center justify-center gap-2 mb-10">
+          <LogOut size={20} color="#FF453A" />
+          <Text className="text-system-red text-lg font-semibold">Çıkış Yap</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      {/* Add Measurement Modal */}
+      <Modal
+        visible={isModalOpen}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setModalOpen(false)}
+      >
+        <View className="flex-1 justify-center items-center bg-black/60">
+          <View className="w-[85%] bg-system-background-secondary rounded-2xl p-6 shadow-lg">
+            <View className="flex-row justify-between items-center mb-4">
+              <Text className="text-xl font-bold text-system-label">Yeni Ölçüm Ekle</Text>
+              <TouchableOpacity onPress={() => setModalOpen(false)}>
+                <X size={24} color="gray" />
+              </TouchableOpacity>
+            </View>
+
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-system-label-secondary mb-1">Kilo (kg)</Text>
+              <TextInput
+                value={String(newWeight)}
+                onChangeText={(text) => setNewWeight(text === '' ? '' : Number(text))}
+                placeholder="Örn: 75.5"
+                keyboardType="numeric"
+                className="w-full p-3 bg-system-background-tertiary text-system-label rounded-lg"
+              />
+            </View>
+
+            <View className="mb-6">
+              <Text className="text-sm font-medium text-system-label-secondary mb-1">Boy (cm)</Text>
+              <TextInput
+                value={String(newHeight)}
+                onChangeText={(text) => setNewHeight(text === '' ? '' : Number(text))}
+                placeholder="Örn: 180"
+                keyboardType="numeric"
+                className="w-full p-3 bg-system-background-tertiary text-system-label rounded-lg"
+              />
+            </View>
+
+            <TouchableOpacity onPress={handleAddMeasurement} disabled={loading} className="w-full py-3 bg-system-blue rounded-xl">
+              <Text className="text-white text-center font-bold text-lg">{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+    </View>
   );
 };
 

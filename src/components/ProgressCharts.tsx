@@ -1,69 +1,130 @@
-// src/components/ProgressCharts.tsx
-
 import React, { useState, useMemo } from 'react';
-import {
-    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    BarChart, Bar,
-    RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar
-} from 'recharts';
+import { View, Text, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
 import { format, parseISO, subDays, subMonths, subYears, isAfter } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { Workout } from '../App';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3 } from 'lucide-react-native';
+import { Svg, Line, Circle, Text as SvgText, Rect, G } from 'react-native-svg';
 
 type TimeRange = 'week' | 'month' | 'year' | 'all';
 
-const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-        if (payload[0].payload.subject) {
-            const { subject, value } = payload[0].payload;
-            return (
-                <div className="bg-system-background-tertiary/80 backdrop-blur-md border border-system-separator rounded-lg p-3 shadow-lg">
-                    <p style={{ color: payload[0].color }} className="font-bold">{subject}: {value.toFixed(0)} kg</p>
-                </div>
-            )
-        }
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const CHART_WIDTH = SCREEN_WIDTH - 64; // padding
+const CHART_HEIGHT = 200;
 
-        return (
-            <div className="bg-system-background-tertiary/80 backdrop-blur-md border border-system-separator rounded-lg p-3 shadow-lg">
-                <p className="text-system-label-secondary font-bold mb-1">{`Tarih: ${label}`}</p>
-                {payload.map((pld: any, index: number) => (
-                    <p key={index} style={{ color: pld.color }} className="font-medium text-sm">
-                        {`${pld.name}: ${pld.value}${pld.unit || ''}`}
-                    </p>
+const SimpleLineChart = ({ data, dataKey, color }: { data: any[], dataKey: string, color: string }) => {
+    if (data.length === 0) return null;
+
+    const values = data.map(d => d[dataKey]);
+    const maxVal = Math.max(...values, 1);
+    const minVal = Math.min(...values);
+
+    // Normalize points
+    const points = data.map((d, i) => {
+        const x = (i / (data.length - 1 || 1)) * CHART_WIDTH;
+        const y = CHART_HEIGHT - ((d[dataKey] / maxVal) * CHART_HEIGHT); // 0 at bottom
+        return { x, y, value: d[dataKey], label: d.dateFormatted };
+    });
+
+    return (
+        <View>
+            <Svg width={CHART_WIDTH} height={CHART_HEIGHT + 20}>
+                {/* Axes */}
+                <Line x1="0" y1={CHART_HEIGHT} x2={CHART_WIDTH} y2={CHART_HEIGHT} stroke="gray" strokeOpacity={0.3} />
+
+                {/* Line */}
+                {points.map((p, i) => {
+                    if (i === 0) return null;
+                    const prev = points[i - 1];
+                    return (
+                        <Line
+                            key={i}
+                            x1={prev.x}
+                            y1={prev.y}
+                            x2={p.x}
+                            y2={p.y}
+                            stroke={color}
+                            strokeWidth="2"
+                        />
+                    );
+                })}
+
+                {/* Dots */}
+                {points.map((p, i) => (
+                    <Circle key={`dot-${i}`} cx={p.x} cy={p.y} r="3" fill={color} />
                 ))}
-            </div>
-        );
-    }
 
-    return null;
+                {/* X Axis Labels (Simplified) */}
+                {points.filter((_, i) => i % Math.ceil(points.length / 5) === 0).map((p, i) => (
+                    <SvgText
+                        key={`label-${i}`}
+                        x={p.x}
+                        y={CHART_HEIGHT + 15}
+                        fontSize="10"
+                        fill="gray"
+                        textAnchor="middle"
+                    >
+                        {p.label}
+                    </SvgText>
+                ))}
+            </Svg>
+        </View>
+    );
 };
 
-const mapToMajorGroup = (bodyPart: string): string => {
-    if (!bodyPart) return 'Other';
-    const lowerCaseBodyPart = bodyPart.toLowerCase();
+const SimpleBarChart = ({ data, dataKey, color }: { data: any[], dataKey: string, color: string }) => {
+    if (data.length === 0) return null;
 
-    if (['chest'].includes(lowerCaseBodyPart)) return 'Chest';
-    if (['back', 'lats', 'middle back', 'lower back'].includes(lowerCaseBodyPart)) return 'Back';
-    if (['shoulders', 'traps'].includes(lowerCaseBodyPart)) return 'Shoulders';
-    if (['upper arms', 'lower arms', 'biceps', 'forearms'].includes(lowerCaseBodyPart)) return 'Biceps';
-    if (['triceps'].includes(lowerCaseBodyPart)) return 'Triceps';
-    if (['upper legs', 'lower legs', 'quadriceps', 'hamstrings', 'glutes', 'calves', 'abductors', 'adductors'].includes(lowerCaseBodyPart)) return 'Legs';
-    if (['waist', 'abdominals'].includes(lowerCaseBodyPart)) return 'Abs';
+    const values = data.map(d => d[dataKey]);
+    const maxVal = Math.max(...values, 1);
+    const barWidth = (CHART_WIDTH / data.length) * 0.6; // 60% of slot width
 
-    return 'Other';
+    return (
+        <View>
+            <Svg width={CHART_WIDTH} height={CHART_HEIGHT + 20}>
+                <Line x1="0" y1={CHART_HEIGHT} x2={CHART_WIDTH} y2={CHART_HEIGHT} stroke="gray" strokeOpacity={0.3} />
+                {data.map((d, i) => {
+                    const barHeight = (d[dataKey] / maxVal) * CHART_HEIGHT;
+                    const x = (i * (CHART_WIDTH / data.length)) + ((CHART_WIDTH / data.length - barWidth) / 2);
+                    const y = CHART_HEIGHT - barHeight;
+
+                    return (
+                        <Rect
+                            key={i}
+                            x={x}
+                            y={y}
+                            width={barWidth}
+                            height={barHeight}
+                            fill={color}
+                            rx={4}
+                            ry={4} // Rounded top
+                        />
+                    );
+                })}
+                {/* X Axis Labels (Simplified) */}
+                {data.filter((_, i) => i % Math.ceil(data.length / 5) === 0).map((d, i) => {
+                    const x = (data.indexOf(d) * (CHART_WIDTH / data.length)) + ((CHART_WIDTH / data.length) / 2);
+                    return (
+                        <SvgText
+                            key={`label-${i}`}
+                            x={x}
+                            y={CHART_HEIGHT + 15}
+                            fontSize="10"
+                            fill="gray"
+                            textAnchor="middle"
+                        >
+                            {d.dateFormatted}
+                        </SvgText>
+                    );
+                })}
+            </Svg>
+        </View>
+    );
 };
-
 
 const ProgressCharts: React.FC<{ workouts: Workout[] }> = ({ workouts }) => {
     const [selectedExercise, setSelectedExercise] = useState<string>('');
     const [timeRange, setTimeRange] = useState<TimeRange>('month');
-
-    const chartStyles = {
-        gridColor: 'rgba(84, 84, 88, 0.6)',
-        tickColor: 'rgb(235 235 245 / 0.6)',
-        axisLineColor: 'rgb(235 235 245 / 0.3)',
-    };
 
     const filteredWorkouts = useMemo(() => {
         if (timeRange === 'all') return workouts;
@@ -111,31 +172,6 @@ const ProgressCharts: React.FC<{ workouts: Workout[] }> = ({ workouts }) => {
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }, [filteredWorkouts]);
 
-    const radarChartData = useMemo(() => {
-        const distribution: { [key: string]: number } = {
-            'Chest': 0, 'Back': 0, 'Shoulders': 0, 'Biceps': 0, 'Triceps': 0, 'Legs': 0, 'Abs': 0
-        };
-
-        filteredWorkouts.forEach(workout => {
-            workout.exercises.forEach(exercise => {
-                const volume = exercise.sets.reduce((sum, set) => sum + (set.reps * set.weight), 0);
-                const majorGroup = mapToMajorGroup(exercise.bodyPart || 'Other');
-                if (distribution.hasOwnProperty(majorGroup)) {
-                    distribution[majorGroup] += volume;
-                }
-            });
-        });
-
-        const data = Object.entries(distribution).map(([subject, value]) => ({ subject, value }));
-        const maxValue = Math.max(...data.map(d => d.value));
-
-        return {
-            data: data.map(d => ({ ...d, fullMark: maxValue > 0 ? maxValue * 1.2 : 100 })),
-            hasData: maxValue > 0
-        };
-    }, [filteredWorkouts]);
-
-
     const FilterButtons = () => {
         const ranges: { key: TimeRange; label: string }[] = [
             { key: 'week', label: 'Hafta' },
@@ -144,91 +180,109 @@ const ProgressCharts: React.FC<{ workouts: Workout[] }> = ({ workouts }) => {
             { key: 'all', label: 'Tümü' },
         ];
         return (
-            <div className="bg-system-background-tertiary p-1 rounded-xl flex items-center justify-center space-x-1">
+            <View className="flex-row bg-system-background-tertiary p-1 rounded-xl">
                 {ranges.map(range => (
-                    <button
+                    <TouchableOpacity
                         key={range.key}
-                        onClick={() => setTimeRange(range.key)}
-                        className={`w-full px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 ${timeRange === range.key ? 'bg-system-fill-secondary shadow-md text-system-label' : 'text-system-label-secondary'}`}>
-                        {range.label}
-                    </button>
+                        onPress={() => setTimeRange(range.key)}
+                        className={`flex-1 py-1.5 rounded-lg items-center ${timeRange === range.key ? 'bg-system-fill-secondary' : ''}`}
+                    >
+                        <Text className={`text-sm font-semibold ${timeRange === range.key ? 'text-system-label' : 'text-system-label-secondary'}`}>
+                            {range.label}
+                        </Text>
+                    </TouchableOpacity>
                 ))}
-            </div>
+            </View>
         );
     };
 
     if (workouts.length === 0) {
         return (
-            <div className="p-4 text-center py-16">
-                <BarChart3 size={40} className="mx-auto text-system-label-tertiary mb-4" />
-                <h3 className="text-lg font-semibold text-system-label mb-1">Henüz Veri Yok</h3>
-                <p className="text-system-label-secondary text-sm">
+            <View className="p-4 items-center justify-center py-16">
+                <BarChart3 size={40} color="rgba(235, 235, 245, 0.3)" className="mb-4" />
+                <Text className="text-lg font-semibold text-system-label mb-1">Henüz Veri Yok</Text>
+                <Text className="text-system-label-secondary text-sm text-center">
                     Grafikleri görmek için önce antrenman kayıtları eklemelisiniz.
-                </p>
-            </div>
+                </Text>
+            </View>
         );
     }
 
-    return (
-        <div>
-            {/* Sticky Header - GÜNCELLENDİ: bg-system-background/80 ve backdrop-blur-md */}
-            <div className="sticky top-[env(safe-area-inset-top)] z-10 bg-system-background/80 backdrop-blur-md pt-4 pb-4 px-4 transition-colors duration-200">
-                <h1 className="text-3xl font-bold text-system-label">İlerleme</h1>
-                <div className="mt-4">
-                    <FilterButtons />
-                </div>
-            </div>
+    // Modal picker for exercise selection (simplified as scrollview for now)
+    const [pickerVisible, setPickerVisible] = useState(false);
 
-            {/* Scrollable Content */}
-            <div className="p-4 space-y-6">
+    return (
+        <ScrollView className="flex-1 bg-system-background">
+            <View className="pt-4 pb-4 px-4 bg-system-background/80 border-b border-system-separator/30">
+                <Text className="text-3xl font-bold text-system-label mb-4">İlerleme</Text>
+                <FilterButtons />
+            </View>
+
+            <View className="p-4 space-y-6 pb-24">
                 {filteredWorkouts.length === 0 ? (
-                    <div className="text-center py-16 px-4 bg-system-background-secondary rounded-xl">
-                        <h3 className="text-xl font-medium text-system-label-secondary mb-2">Bu Aralıkta Veri Yok</h3>
-                        <p className="text-system-label-tertiary text-md">Lütfen farklı bir zaman aralığı seçin.</p>
-                    </div>
+                    <View className="p-16 bg-system-background-secondary rounded-xl items-center">
+                        <Text className="text-xl font-medium text-system-label-secondary mb-2">Bu Aralıkta Veri Yok</Text>
+                        <Text className="text-system-label-tertiary">Lütfen farklı bir zaman aralığı seçin.</Text>
+                    </View>
                 ) : (
                     <>
-                        <div className="bg-system-background-secondary rounded-2xl p-4 space-y-6">
-                            <h2 className="font-bold text-xl text-system-label">Genel İlerleme</h2>
+                        {/* General Stats */}
+                        <View className="bg-system-background-secondary rounded-2xl p-4 space-y-6">
+                            <Text className="font-bold text-xl text-system-label">Genel İlerleme</Text>
 
-                            {radarChartData.hasData && (
-                                <div>
-                                    <h3 className="text-md font-semibold text-system-label-secondary mb-3">Kas Grubu Dağılımı (Hacme Göre)</h3>
-                                    <div className="h-80 w-full"><ResponsiveContainer>
-                                        <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarChartData.data}>
-                                            <PolarGrid stroke={chartStyles.gridColor} />
-                                            <PolarAngleAxis dataKey="subject" tick={{ fill: chartStyles.tickColor, fontSize: 12 }} />
-                                            <PolarRadiusAxis angle={30} domain={[0, 'dataMax']} tick={false} axisLine={false} />
-                                            <Radar name="Hacim" dataKey="value" stroke="#0A84FF" fill="#0A84FF" fillOpacity={0.6} />
-                                            <Tooltip content={<CustomTooltip />} />
-                                        </RadarChart>
-                                    </ResponsiveContainer></div>
-                                </div>
+                            <View>
+                                <Text className="text-md font-semibold text-system-label-secondary mb-3">Toplam Hacim (kg)</Text>
+                                <SimpleLineChart data={generalStats} dataKey="totalVolume" color="#0A84FF" />
+                            </View>
+
+                            <View>
+                                <Text className="text-md font-semibold text-system-label-secondary mb-3">Toplam Set Sayısı</Text>
+                                <SimpleBarChart data={generalStats} dataKey="totalSets" color="#FF9F0A" />
+                            </View>
+                        </View>
+
+                        {/* Exercise Selection */}
+                        <View className="bg-system-background-secondary rounded-2xl p-4 space-y-4">
+                            <Text className="font-bold text-xl text-system-label">Hareket Bazlı İlerleme</Text>
+
+                            {/* Simple Dropdown Simulator */}
+                            <TouchableOpacity onPress={() => setPickerVisible(!pickerVisible)} className="p-3 bg-system-background-tertiary rounded-lg border border-system-separator/20">
+                                <Text className="text-system-label text-base">{selectedExercise || "Hareket Seçin"}</Text>
+                            </TouchableOpacity>
+
+                            {pickerVisible && (
+                                <View className="bg-system-background-tertiary rounded-lg p-2 max-h-40">
+                                    <ScrollView nestedScrollEnabled>
+                                        {allExercises.map(ex => (
+                                            <TouchableOpacity key={ex} onPress={() => { setSelectedExercise(ex); setPickerVisible(false); }} className="p-2 border-b border-system-separator/10">
+                                                <Text className="text-system-label">{ex}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </ScrollView>
+                                </View>
                             )}
 
-                            <div><h3 className="text-md font-semibold text-system-label-secondary mb-3">Toplam Hacim (kg)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><LineChart data={generalStats}><CartesianGrid strokeDasharray="3 3" stroke={chartStyles.gridColor} /><XAxis dataKey="dateFormatted" tick={{ fontSize: 12, fill: chartStyles.tickColor }} /><YAxis tick={{ fontSize: 12, fill: chartStyles.tickColor }} /><Tooltip content={<CustomTooltip />} /><Line type="monotone" dataKey="totalVolume" name="Toplam Hacim" unit=" kg" stroke="#0A84FF" strokeWidth={2.5} dot={{ fill: '#0A84FF', r: 4 }} activeDot={{ r: 6 }} /></LineChart></ResponsiveContainer></div></div>
-
-                            <div><h3 className="text-md font-semibold text-system-label-secondary mb-3">Toplam Set Sayısı</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={generalStats}><CartesianGrid strokeDasharray="3 3" stroke={chartStyles.gridColor} /><XAxis dataKey="dateFormatted" tick={{ fontSize: 12, fill: chartStyles.tickColor }} /><YAxis tick={{ fontSize: 12, fill: chartStyles.tickColor }} allowDecimals={false} /><Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 159, 10, 0.1)' }} /><Bar dataKey="totalSets" name="Toplam Set" unit=" set" radius={[8, 8, 0, 0]} barSize={20} fill="#FF9F0A" /></BarChart></ResponsiveContainer></div></div>
-                        </div>
-
-                        <div className="bg-system-background-secondary rounded-2xl p-4 space-y-4">
-                            <h2 className="font-bold text-xl text-system-label">Hareket Bazlı İlerleme</h2>
-                            <select value={selectedExercise} onChange={(e) => setSelectedExercise(e.target.value)} className="w-full p-3 border-none bg-system-background-tertiary text-system-label rounded-lg focus:outline-none focus:ring-2 focus:ring-system-blue text-base">
-                                <option value="">Hareket seçin</option>
-                                {allExercises.map(exercise => (<option key={exercise} value={exercise}>{exercise}</option>))}
-                            </select>
-
                             {selectedExercise && exerciseData.length > 0 ? (
-                                <div className="space-y-6">
-                                    <div><h3 className="text-md font-semibold text-system-label-secondary mb-3">Maksimum Ağırlık - {selectedExercise}</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><LineChart data={exerciseData}><CartesianGrid strokeDasharray="3 3" stroke={chartStyles.gridColor} /><XAxis dataKey="dateFormatted" tick={{ fontSize: 12, fill: chartStyles.tickColor }} /><YAxis type="number" domain={['dataMin - 5', 'dataMax + 5']} tick={{ fontSize: 12, fill: chartStyles.tickColor }} /><Tooltip content={<CustomTooltip />} /><Line type="monotone" dataKey="maxWeight" name="Maks Ağırlık" unit=" kg" stroke="#30D158" strokeWidth={2.5} dot={{ fill: '#30D158', r: 4 }} activeDot={{ r: 6 }} /></LineChart></ResponsiveContainer></div></div>
-                                    <div><h3 className="text-md font-semibold text-system-label-secondary mb-3">Toplam Hacim - {selectedExercise}</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={exerciseData}><CartesianGrid strokeDasharray="3 3" stroke={chartStyles.gridColor} /><XAxis dataKey="dateFormatted" tick={{ fontSize: 12, fill: chartStyles.tickColor }} /><YAxis tick={{ fontSize: 12, fill: chartStyles.tickColor }} /><Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(175, 82, 222, 0.1)' }} /><Bar dataKey="totalVolume" name="Toplam Hacim" unit=" kg" radius={[8, 8, 0, 0]} barSize={20} fill="#AF52DE" /></BarChart></ResponsiveContainer></div></div>
-                                </div>
-                            ) : selectedExercise && exerciseData.length === 0 ? (<div className="text-center py-8 text-system-label-secondary text-md">Bu hareket için seçili aralıkta veri bulunmuyor.</div>) : (<div className="text-center py-8 text-system-label-secondary text-md">İlerlemenizi görmek için bir hareket seçin.</div>)}
-                        </div>
+                                <View className="space-y-6">
+                                    <View>
+                                        <Text className="text-md font-semibold text-system-label-secondary mb-3">Maksimum Ağırlık - {selectedExercise}</Text>
+                                        <SimpleLineChart data={exerciseData} dataKey="maxWeight" color="#30D158" />
+                                    </View>
+                                    <View>
+                                        <Text className="text-md font-semibold text-system-label-secondary mb-3">Toplam Hacim - {selectedExercise}</Text>
+                                        <SimpleBarChart data={exerciseData} dataKey="totalVolume" color="#AF52DE" />
+                                    </View>
+                                </View>
+                            ) : selectedExercise ? (
+                                <Text className="text-center py-8 text-system-label-secondary">Bu hareket için seçili aralıkta veri bulunmuyor.</Text>
+                            ) : (
+                                <Text className="text-center py-8 text-system-label-secondary">İlerlemenizi görmek için bir hareket seçin.</Text>
+                            )}
+                        </View>
                     </>
                 )}
-            </div>
-        </div>
+            </View>
+        </ScrollView>
     );
 };
 

@@ -1,6 +1,6 @@
-// src/components/ExerciseLibrary.tsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Star, X, Filter } from 'lucide-react';
+import { View, Text, TextInput, TouchableOpacity, Image, ScrollView, Modal, FlatList } from 'react-native';
+import { Search, Star, X, Filter } from 'lucide-react-native';
 import { Exercise, getBodyParts } from '../services/exerciseApi';
 import ExerciseDetailsModal from './ExerciseDetailsModal';
 
@@ -27,7 +27,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ onExerciseSelect, all
   const [bodyParts, setBodyParts] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [selectedBodyPart, setSelectedBodyPart] = useState('all');
-  const topRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchBodyPartsData = async () => {
@@ -72,82 +71,85 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ onExerciseSelect, all
     setShowFilters(false);
   }
 
-  const handleFilterToggle = () => {
-    if (!showFilters) {
-      topRef.current?.scrollIntoView({ behavior: 'auto' });
-    }
-    setShowFilters(prev => !prev);
+  const renderExerciseItem = ({ item }: { item: Exercise }) => {
+    const isFavorited = favoriteExercises.includes(item.id);
+    return (
+      <TouchableOpacity onPress={() => setSelectedExercise(item)} className="p-4 flex-row items-center gap-4 border-b border-system-separator/10">
+        <Image
+          source={{ uri: getImageUrl(item.gifUrl) }}
+          className="w-16 h-16 rounded-lg bg-system-background-tertiary"
+          resizeMode="cover"
+        />
+        <View className="flex-1">
+          <Text className="font-semibold text-system-label text-base" numberOfLines={1}>{item.name}</Text>
+          <Text className="text-sm text-system-label-secondary mt-1" numberOfLines={1}>{formatBodyPartName(item.bodyPart)}</Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => onToggleFavorite(item.id)}
+          className="p-3"
+        >
+          <Star size={20} color={isFavorited ? "#FF9F0A" : "gray"} fill={isFavorited ? "#FF9F0A" : "transparent"} />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
   };
 
   return (
-    <div ref={topRef}>
-      {/* Sticky Header - GÜNCELLENDİ: bg-system-background/80 ve backdrop-blur-md */}
-      <div className="sticky top-[env(safe-area-inset-top)] z-10 bg-system-background/80 backdrop-blur-md pt-4 pb-4 px-4 transition-colors duration-200">
-        <h1 className="text-3xl font-bold text-system-label">Kütüphane</h1>
-        <div className="flex gap-2 items-center mt-4">
-          <div className="relative flex-grow">
-            <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-system-label-tertiary" />
-            <input
-              type="text"
+    <View className="flex-1 bg-system-background">
+      {/* Header */}
+      <View className="px-4 py-4 bg-system-background/80 border-b border-system-separator/20">
+        <Text className="text-3xl font-bold text-system-label">Kütüphane</Text>
+        <View className="flex-row gap-2 items-center mt-4">
+          <View className="flex-1 flex-row items-center bg-system-background-secondary rounded-lg px-3">
+            <Search size={20} color="rgba(235, 235, 245, 0.3)" />
+            <TextInput
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChangeText={setSearchQuery}
               placeholder="Hareket adı ara..."
-              className="w-full pl-10 pr-10 py-2 bg-system-background-secondary text-system-label rounded-lg focus:outline-none focus:ring-2 focus:ring-system-blue"
+              placeholderTextColor="rgba(235, 235, 245, 0.3)"
+              className="flex-1 py-2 pl-2 text-system-label h-10"
             />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-5 h-5 bg-system-label-tertiary rounded-full text-system-background active:scale-90 transition-transform"
-              >
-                <X size={14} />
-              </button>
+            {searchQuery !== '' && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <X size={16} color="rgba(235, 235, 245, 0.6)" />
+              </TouchableOpacity>
             )}
-          </div>
-          <button onClick={handleFilterToggle} className="p-2 bg-system-fill rounded-lg text-system-label">
-            <Filter size={20} />
-          </button>
-        </div>
-      </div>
-      {/* Scrollable Content */}
-      <div className="p-4 space-y-4">
-        {showFilters && (
-          <div className="bg-system-background-secondary rounded-xl p-4">
-            <h2 className="font-semibold text-system-label mb-3">Vücut Bölgesi</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <button onClick={() => handleSelectFilter('all')} className={`w-full py-2 rounded-lg text-sm font-semibold transition-colors ${selectedBodyPart === 'all' ? 'bg-system-blue text-white' : 'bg-system-fill text-system-label'}`}>Tümü</button>
-              <button onClick={() => handleSelectFilter('favorites')} className={`w-full py-2 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${selectedBodyPart === 'favorites' ? 'bg-system-blue text-white' : 'bg-system-fill text-system-label'}`}><Star size={16} />Favoriler</button>
-              {bodyParts.map(part => (
-                <button key={part} onClick={() => handleSelectFilter(part)} className={`w-full py-2 rounded-lg text-sm font-semibold transition-colors ${selectedBodyPart === part ? 'bg-system-blue text-white' : 'bg-system-fill text-system-label'}`}>{formatBodyPartName(part)}</button>
-              ))}
-            </div>
-          </div>
-        )}
+          </View>
+          <TouchableOpacity onPress={() => setShowFilters(!showFilters)} className={`p-2.5 rounded-lg ${showFilters ? 'bg-system-blue' : 'bg-system-fill'}`}>
+            <Filter size={20} color={showFilters ? 'white' : 'white'} />
+          </TouchableOpacity>
+        </View>
+      </View>
 
-        <div className="bg-system-background-secondary rounded-xl divide-y divide-system-separator">
-          {filteredExercises.map(exercise => {
-            const isFavorited = favoriteExercises.includes(exercise.id);
-            return (
-              <div key={exercise.id} className="p-4 flex items-center gap-4">
-                <img
-                  src={getImageUrl(exercise.gifUrl)}
-                  alt={exercise.name}
-                  className="w-16 h-16 rounded-lg object-cover bg-system-background-tertiary flex-shrink-0"
-                />
-                <div onClick={() => setSelectedExercise(exercise)} className="flex-1 min-w-0 cursor-pointer">
-                  <p className="font-semibold text-system-label truncate">{exercise.name}</p>
-                  <p className="text-sm text-system-label-secondary truncate">{formatBodyPartName(exercise.bodyPart)}</p>
-                </div>
-                <button
-                  onClick={() => onToggleFavorite(exercise.id)}
-                  className="p-3 text-system-label-secondary"
-                >
-                  <Star className={`transition-all ${isFavorited ? 'fill-system-yellow text-system-yellow' : ''}`} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {/* Filters */}
+      {showFilters && (
+        <View className="bg-system-background-secondary p-4 border-b border-system-separator/10">
+          <Text className="font-semibold text-system-label mb-3">Vücut Bölgesi</Text>
+          <View className="flex-row flex-wrap gap-2">
+            <TouchableOpacity onPress={() => handleSelectFilter('all')} className={`px-4 py-2 rounded-lg ${selectedBodyPart === 'all' ? 'bg-system-blue' : 'bg-system-fill'}`}>
+              <Text className={`font-semibold text-sm ${selectedBodyPart === 'all' ? 'text-white' : 'text-system-label'}`}>Tümü</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleSelectFilter('favorites')} className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${selectedBodyPart === 'favorites' ? 'bg-system-blue' : 'bg-system-fill'}`}>
+              <Star size={14} color={selectedBodyPart === 'favorites' ? 'white' : 'white'} fill={selectedBodyPart === 'favorites' ? 'white' : 'transparent'} />
+              <Text className={`font-semibold text-sm ${selectedBodyPart === 'favorites' ? 'text-white' : 'text-system-label'}`}>Favoriler</Text>
+            </TouchableOpacity>
+            {bodyParts.map(part => (
+              <TouchableOpacity key={part} onPress={() => handleSelectFilter(part)} className={`px-4 py-2 rounded-lg ${selectedBodyPart === part ? 'bg-system-blue' : 'bg-system-fill'}`}>
+                <Text className={`font-semibold text-sm ${selectedBodyPart === part ? 'text-white' : 'text-system-label'}`}>{formatBodyPartName(part)}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* Content */}
+      <FlatList
+        data={filteredExercises}
+        keyExtractor={(item) => item.id}
+        renderItem={renderExerciseItem}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        className="flex-1 bg-system-background-secondary mx-4 rounded-xl mt-4"
+      />
 
       {selectedExercise && (
         <ExerciseDetailsModal
@@ -157,7 +159,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ onExerciseSelect, all
           getImageUrl={getImageUrl}
         />
       )}
-    </div>
+    </View>
   );
 };
 

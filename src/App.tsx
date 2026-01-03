@@ -1,7 +1,7 @@
-// src/App.tsx
 import React, { useState, useEffect } from 'react';
-import { CalendarRange, Radar, LibraryBig, LineChart } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { View, Text, TouchableOpacity, SafeAreaView, ScrollView, Alert, Platform } from 'react-native';
+import { CalendarRange, Radar, LibraryBig, LineChart } from 'lucide-react-native';
+import { StatusBar } from 'expo-status-bar';
 import WorkoutCalendar from './components/WorkoutCalendar';
 import AddWorkout from './components/AddWorkout';
 import WorkoutDetails from './components/WorkoutDetails';
@@ -15,6 +15,7 @@ import { supabase } from './services/supabaseClient';
 import { Session } from '@supabase/supabase-js';
 import { getAllExercises, Exercise as LibraryExercise } from './services/exerciseApi';
 import { CalendarSkeleton, BottomNavSkeleton } from './components/Skeletons';
+import { storage } from './utils/storage';
 
 export interface Exercise {
   id: string;
@@ -34,14 +35,14 @@ export interface Workout {
   exercises: Exercise[];
 }
 
-type View = 'calendar' | 'add' | 'details' | 'progress' | 'routines' | 'create_routine' | 'library' | 'profile';
+type ViewType = 'calendar' | 'add' | 'details' | 'progress' | 'routines' | 'create_routine' | 'library' | 'profile';
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentView, setCurrentView] = useState<View>('calendar');
+  const [currentView, setCurrentView] = useState<ViewType>('calendar');
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [editingRoutine, setEditingRoutine] = useState<Partial<Routine> | null>(null);
@@ -102,7 +103,7 @@ function App() {
       }
 
       // --- EKLENDİ: Uygulama açıldığında devam eden antrenman kontrolü ---
-      const savedStartTime = localStorage.getItem('currentWorkoutStartTime');
+      const savedStartTime = await storage.getItem('currentWorkoutStartTime');
       if (savedStartTime) {
         const todayStr = new Date().toISOString().split('T')[0];
         const workoutForToday = formattedWorkouts.find((w: any) => w.date === todayStr);
@@ -194,44 +195,55 @@ function App() {
 
     } catch (error: any) {
       console.error("Antrenman kaydedilirken hata oluştu:", error);
-      alert(`Kayıt sırasında bir hata oluştu: ${error.message}`);
+      Alert.alert("Hata", `Kayıt sırasında bir hata oluştu: ${error.message}`);
       throw error;
     }
   };
 
   const handleFinishWorkoutFromCalendar = async (workout: Workout) => {
-    if (!confirm('Antrenmanı bitirmek istediğinize emin misiniz?')) return;
+    // React Native'de confirm yerine Alert kullanıyoruz
+    Alert.alert(
+      "Onay",
+      "Antrenmanı bitirmek istediğinize emin misiniz?",
+      [
+        { text: "Vazgeç", style: "cancel" },
+        {
+          text: "Evet",
+          onPress: async () => {
+            const now = new Date();
+            let duration = workout.duration || 0;
 
-    const now = new Date();
-    let duration = workout.duration || 0;
+            const savedStartTime = await storage.getItem('currentWorkoutStartTime');
+            if (savedStartTime) {
+              const start = new Date(savedStartTime).getTime();
+              duration = Math.floor((now.getTime() - start) / 1000);
+            } else if (workout.startTime) {
+              const start = new Date(workout.startTime).getTime();
+              duration = Math.floor((now.getTime() - start) / 1000);
+            }
 
-    const savedStartTime = localStorage.getItem('currentWorkoutStartTime');
-    if (savedStartTime) {
-      const start = new Date(savedStartTime).getTime();
-      duration = Math.floor((now.getTime() - start) / 1000);
-    } else if (workout.startTime) {
-      const start = new Date(workout.startTime).getTime();
-      duration = Math.floor((now.getTime() - start) / 1000);
-    }
+            try {
+              const { error } = await supabase
+                .from('workouts')
+                .update({
+                  end_time: now.toISOString(),
+                  duration: duration
+                })
+                .eq('id', workout.id);
 
-    try {
-      const { error } = await supabase
-        .from('workouts')
-        .update({
-          end_time: now.toISOString(),
-          duration: duration
-        })
-        .eq('id', workout.id);
+              if (error) throw error;
 
-      if (error) throw error;
+              await storage.removeItem('currentWorkoutStartTime');
 
-      localStorage.removeItem('currentWorkoutStartTime');
-
-      await fetchAllData();
-    } catch (error: any) {
-      console.error("Bitirme hatası:", error);
-      alert('Hata: ' + error.message);
-    }
+              await fetchAllData();
+            } catch (error: any) {
+              console.error("Bitirme hatası:", error);
+              Alert.alert("Hata", error.message);
+            }
+          }
+        }
+      ]
+    );
   }
 
   const handleSaveRoutine = async (id: string | null, name: string, exercises: { id: string; name: string }[]) => {
@@ -252,7 +264,7 @@ function App() {
     const todayStr = new Date().toISOString().split('T')[0];
 
     if (workoutToDelete && workoutToDelete.date === todayStr) {
-      localStorage.removeItem('currentWorkoutStartTime');
+      await storage.removeItem('currentWorkoutStartTime');
     }
 
     setWorkouts(prev => prev.filter(w => w.id !== workoutId));
@@ -264,16 +276,21 @@ function App() {
       await fetchAllData();
     } catch (error: any) {
       console.error("Silme hatası:", error);
-      alert("Antrenman silinirken bir hata oluştu.");
+      Alert.alert("Hata", "Antrenman silinirken bir hata oluştu.");
       await fetchAllData();
     }
   };
 
   const handleDeleteRoutine = async (routineId: string) => {
-    if (confirm("Bu rutini silmek istediğinizden emin misiniz?")) {
-      await supabase.from('routines').delete().eq('id', routineId);
-      await fetchAllData();
-    }
+    Alert.alert("Onay", "Bu rutini silmek istediğinizden emin misiniz?", [
+      { text: "İptal", style: "cancel" },
+      {
+        text: "Sil", style: "destructive", onPress: async () => {
+          await supabase.from('routines').delete().eq('id', routineId);
+          await fetchAllData();
+        }
+      }
+    ]);
   };
 
   const handleEditRoutine = (routine: Routine) => {
@@ -303,12 +320,22 @@ function App() {
     });
 
     if (workoutForToday) {
-      if (confirm('Bugün için zaten bir antrenman kaydı var. Bu rutindeki hareketleri mevcut antrenmana eklemek ister misiniz?')) {
-        const updatedExercises = [...workoutForToday.exercises, ...newExercisesFromRoutine];
-        setEditingWorkout({ ...workoutForToday, exercises: updatedExercises });
-      } else {
-        return;
-      }
+      Alert.alert(
+        "Mevcut Antrenman",
+        "Bugün için zaten bir antrenman kaydı var. Bu rutindeki hareketleri mevcut antrenmana eklemek ister misiniz?",
+        [
+          { text: "Hayır", style: "cancel" },
+          {
+            text: "Evet",
+            onPress: () => {
+              const updatedExercises = [...workoutForToday.exercises, ...newExercisesFromRoutine];
+              setEditingWorkout({ ...workoutForToday, exercises: updatedExercises });
+              setSelectedDate(todayStr);
+              setCurrentView('add');
+            }
+          }
+        ]
+      );
     } else {
       setEditingWorkout({
         id: 'new',
@@ -317,9 +344,9 @@ function App() {
         exercises: newExercisesFromRoutine,
         routine_id: Number(routine.id)
       });
+      setSelectedDate(todayStr);
+      setCurrentView('add');
     }
-    setSelectedDate(todayStr);
-    setCurrentView('add');
   };
 
   const handleAddExerciseFromLibrary = (exerciseToAdd: LibraryExercise) => {
@@ -332,7 +359,7 @@ function App() {
     };
     if (workoutToEdit) {
       if (workoutToEdit.exercises.some(ex => ex.name.toLowerCase() === newExercise.name.toLowerCase())) {
-        alert(`"${newExercise.name}" zaten bugünkü antrenmanınızda mevcut.`);
+        Alert.alert("Uyarı", `"${newExercise.name}" zaten bugünkü antrenmanınızda mevcut.`);
       } else {
         setEditingWorkout({ ...workoutToEdit, exercises: [newExercise, ...workoutToEdit.exercises] });
       }
@@ -353,19 +380,16 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-system-background flex flex-col max-w-md mx-auto font-sans antialiased">
-        <header className="sticky top-0 z-20 bg-system-background/80 backdrop-blur-md w-full border-b border-transparent">
-          <div className="h-[env(safe-area-inset-top)]"></div>
-        </header>
-        <main className="flex-1 pb-28 px-4 pt-4">
-          <CalendarSkeleton />
-        </main>
-        <BottomNavSkeleton />
-      </div>
+      <SafeAreaView className="flex-1 bg-system-background">
+        <View className="p-4">
+          {/* Skeleton placeholder */}
+          <Text className="text-white">Yükleniyor...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  if (!session) return <Auth />;
+  if (!session) return <SafeAreaView className="flex-1 bg-system-background"><Auth /></SafeAreaView>;
 
   const renderContent = () => {
     switch (currentView) {
@@ -409,42 +433,25 @@ function App() {
       { view: 'progress', icon: LineChart, label: 'İlerleme' },
     ];
     return (
-      <nav className="fixed bottom-0 left-0 right-0 bg-system-background-secondary/90 backdrop-blur-xl border-t border-system-separator z-50">
-        <div className="max-w-md mx-auto flex justify-around px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
-          {navItems.map(item => (
-            <button key={item.view} onClick={() => setCurrentView(item.view as View)} className={`flex flex-col items-center justify-center gap-1 w-1/5 py-1 rounded-lg transition-all duration-200 ${currentView === item.view ? 'text-system-blue scale-105' : 'text-system-label-secondary hover:text-system-label'}`}>
-              <item.icon size={24} strokeWidth={currentView === item.view ? 2.5 : 2} />
-              <span className="text-[10px] font-medium">{item.label}</span>
-            </button>
-          ))}
-        </div>
-      </nav>
+      <View className="absolute bottom-0 left-0 right-0 bg-system-background-secondary/90 border-t border-system-separator pt-2 pb-6 flex-row justify-around">
+        {navItems.map(item => (
+          <TouchableOpacity key={item.view} onPress={() => setCurrentView(item.view as ViewType)} className={`items-center justify-center gap-1 w-1/5 py-1 ${currentView === item.view ? 'scale-105' : ''}`}>
+            <item.icon size={24} color={currentView === item.view ? '#0A84FF' : 'rgba(235, 235, 245, 0.6)'} strokeWidth={currentView === item.view ? 2.5 : 2} />
+            <Text className={`text-[10px] font-medium ${currentView === item.view ? 'text-system-blue' : 'text-system-label-secondary'}`}>{item.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
     );
   };
 
   return (
-    <div className="min-h-screen bg-system-background flex flex-col max-w-md mx-auto font-sans antialiased">
-      <header className="sticky top-0 z-20 bg-system-background/80 backdrop-blur-md w-full border-b border-transparent">
-        <div className="h-[env(safe-area-inset-top)]"></div>
-      </header>
-
-      <main className="flex-1 pb-28">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentView}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="w-full"
-          >
-            {renderContent()}
-          </motion.div>
-        </AnimatePresence>
-      </main>
-
+    <SafeAreaView className="flex-1 bg-system-background">
+      <StatusBar style="light" />
+      <View className="flex-1 pb-16">
+        {renderContent()}
+      </View>
       {renderBottomNav()}
-    </div>
+    </SafeAreaView>
   );
 }
 

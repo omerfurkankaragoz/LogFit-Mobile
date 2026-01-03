@@ -1,6 +1,6 @@
-// src/components/ExerciseDetailsModal.tsx
 import React from 'react';
-import { Plus } from 'lucide-react';
+import { View, Text, TouchableOpacity, Image, ScrollView, Modal } from 'react-native';
+import { Plus } from 'lucide-react-native';
 import { Exercise } from '../services/exerciseApi';
 
 interface ExerciseDetailsModalProps {
@@ -18,68 +18,67 @@ const formatBodyPartName = (bodyPart: string) => {
 const ExerciseDetailsModal: React.FC<ExerciseDetailsModalProps> = ({ exercise, onClose, onAdd, getImageUrl }) => {
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={true}
+      onRequestClose={onClose}
+    >
+      <View className="flex-1 justify-end bg-black/60">
+        <TouchableOpacity className="absolute inset-0" onPress={onClose} activeOpacity={1} />
 
-      {/* Modal Container: Rutin Seç ile aynı stil yapısı */}
-      <div className="relative w-full max-w-md bg-system-background-secondary rounded-t-3xl p-6 pb-[calc(2rem+env(safe-area-inset-bottom))] animate-in slide-in-from-bottom duration-300 flex flex-col max-h-[80vh]">
+        <View className="bg-system-background-secondary rounded-t-3xl p-6 h-[85%] w-full">
+          <View className="items-center mb-6">
+            <View className="w-12 h-1.5 bg-system-label-tertiary rounded-full mb-4" />
+            <Text className="text-2xl font-bold text-center text-system-label leading-tight">{exercise.name}</Text>
+          </View>
 
-        {/* Tutamaç ve Başlık (X butonu yok, Rutin Seç gibi) */}
-        <div className="flex-shrink-0">
-          <div className="w-12 h-1.5 bg-system-label-tertiary rounded-full mx-auto mb-6"></div>
-          <h2 className="text-2xl font-bold text-center text-system-label mb-6 leading-tight">{exercise.name}</h2>
-        </div>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+            <View className="w-full aspect-video rounded-2xl bg-system-background-tertiary overflow-hidden mb-6">
+              <Image
+                source={{ uri: getImageUrl(exercise.gifUrl) }}
+                className="w-full h-full"
+                resizeMode="cover"
+              />
+            </View>
 
-        {/* Kaydırılabilir İçerik */}
-        <div className="overflow-y-auto scrollbar-thin space-y-6 flex-1 min-h-0">
-          {/* Görsel */}
-          <div className="w-full aspect-video rounded-2xl bg-system-background-tertiary overflow-hidden shadow-sm flex-shrink-0">
-            <img
-              src={getImageUrl(exercise.gifUrl)}
-              alt={exercise.name}
-              className="w-full h-full object-cover"
-            />
-          </div>
+            <View className="flex-row gap-4 mb-6">
+              <View className="flex-1 bg-system-background-tertiary p-4 rounded-2xl items-center">
+                <Text className="text-xs font-bold text-system-label-secondary uppercase tracking-wider mb-1">Bölge</Text>
+                <Text className="font-semibold text-system-label text-lg text-center">{formatBodyPartName(exercise.bodyPart)}</Text>
+              </View>
+              <View className="flex-1 bg-system-background-tertiary p-4 rounded-2xl items-center">
+                <Text className="text-xs font-bold text-system-label-secondary uppercase tracking-wider mb-1">Ekipman</Text>
+                <Text className="font-semibold text-system-label text-lg text-center">{exercise.equipment}</Text>
+              </View>
+            </View>
 
-          {/* Bilgi Kartları */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-system-background-tertiary p-4 rounded-2xl text-center border border-system-separator/5">
-              <p className="text-xs font-bold text-system-label-secondary uppercase tracking-wider mb-1">Bölge</p>
-              <p className="font-semibold text-system-label text-lg">{formatBodyPartName(exercise.bodyPart)}</p>
-            </div>
-            <div className="bg-system-background-tertiary p-4 rounded-2xl text-center border border-system-separator/5">
-              <p className="text-xs font-bold text-system-label-secondary uppercase tracking-wider mb-1">Ekipman</p>
-              <p className="font-semibold text-system-label text-lg">{exercise.equipment}</p>
-            </div>
-          </div>
+            {exercise.instructions && exercise.instructions.length > 0 && (
+              <View className="bg-system-background-tertiary p-5 rounded-2xl mb-6">
+                <Text className="font-bold text-system-label mb-4 text-sm uppercase tracking-wide opacity-80">Talimatlar</Text>
+                <View className="gap-3">
+                  {exercise.instructions.map((instruction, index) => (
+                    <Text key={index} className="text-[15px] leading-relaxed text-system-label-secondary">
+                      {index + 1}. {instruction}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+            )}
+          </ScrollView>
 
-          {/* Talimatlar */}
-          {exercise.instructions && exercise.instructions.length > 0 && (
-            <div className="bg-system-background-tertiary p-5 rounded-2xl border border-system-separator/5">
-              <h3 className="font-bold text-system-label mb-4 text-sm uppercase tracking-wide opacity-80">Talimatlar</h3>
-              <ul className="space-y-3 list-decimal list-inside text-system-label-secondary">
-                {exercise.instructions.map((instruction, index) => (
-                  <li key={index} className="text-[15px] leading-relaxed pl-1 marker:text-system-label-tertiary marker:font-bold">
-                    {instruction}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-
-        {/* Alt Buton */}
-        <div className="flex-shrink-0 pt-6 mt-auto">
-          <button
-            onClick={() => onAdd(exercise)}
-            className="w-full flex items-center justify-center gap-2 py-4 bg-system-blue text-white rounded-2xl font-bold text-lg active:scale-95 transition-transform shadow-lg shadow-system-blue/20"
-          >
-            <Plus size={24} />
-            Antrenmana Ekle
-          </button>
-        </div>
-      </div>
-    </div>
+          <View className="pt-4 border-t border-system-separator/10">
+            <TouchableOpacity
+              onPress={() => onAdd(exercise)}
+              className="w-full flex-row items-center justify-center gap-2 py-4 bg-system-blue rounded-2xl shadow-lg"
+            >
+              <Plus size={24} color="white" />
+              <Text className="text-white font-bold text-lg">Antrenmana Ekle</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 };
 
